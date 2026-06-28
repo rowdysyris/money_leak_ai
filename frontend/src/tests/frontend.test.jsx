@@ -68,6 +68,25 @@ describe("MoneyLeak AI frontend", () => {
     expect(screen.getByText("Upload your bank statement to get started")).toBeInTheDocument();
   });
 
+  it("test_dashboard_retry_refetches_every_resource", () => {
+    authenticate();
+    const refetches = [];
+    useApiResource.mockImplementation((endpoint) => {
+      const result = resource({
+        data: endpoint === "/api/dashboard/summary" ? { saving_priority_list: [] } : [],
+        error: endpoint === "/api/dashboard/category-breakdown" ? "The request took too long. Please try again." : ""
+      });
+      refetches.push(result.refetch);
+      return result;
+    });
+
+    renderWithProviders(<Dashboard />);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(refetches).toHaveLength(5);
+    refetches.forEach((refetch) => expect(refetch).toHaveBeenCalledTimes(1));
+  });
+
   it("test_metric_card_displays_correct_value", () => {
     render(<MetricCard label="Total Spent" value="₹1,234" subtitle="This month" />);
     expect(screen.getByText("Total Spent")).toBeInTheDocument();

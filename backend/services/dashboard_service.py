@@ -52,6 +52,7 @@ def get_summary(transactions: list[Any], user_budget: Any = None) -> dict[str, A
                 "top_spending_category": None,
                 "uncategorized_transactions": 0,
                 "money_leak_score": None,
+                "saving_priority_list": [],
                 "possible_monthly_savings": 0.0,
                 "possible_yearly_savings": 0.0,
                 "high_value_review_transactions": [],
@@ -98,6 +99,7 @@ def get_summary(transactions: list[Any], user_budget: Any = None) -> dict[str, A
         warnings.extend(priority_result.get("warnings", []))
     except (ImportError, AttributeError, TypeError, ValueError) as exc:
         warnings.append(f"Savings and score could not be fully calculated: {exc.__class__.__name__}")
+        saving_items = []
         possible_monthly_savings = 0.0
         money_leak_score = None
 
@@ -113,6 +115,7 @@ def get_summary(transactions: list[Any], user_budget: Any = None) -> dict[str, A
         "top_spending_category": top_category,
         "uncategorized_transactions": sum(1 for transaction in safe_transactions if bool(get_field(transaction, "needs_review", False))),
         "money_leak_score": money_leak_score,
+        "saving_priority_list": saving_items,
         "possible_monthly_savings": round(possible_monthly_savings, 2),
         "possible_yearly_savings": round(possible_monthly_savings * 12.0, 2),
         "high_value_review_transactions": review_rows,

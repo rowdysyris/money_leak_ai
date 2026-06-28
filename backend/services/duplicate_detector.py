@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from itertools import combinations
+from datetime import timedelta
 from typing import Any
 
 from services.analytics_utils import debit_amount, display_merchant_name, empty_result, get_category, get_field, is_high_value_or_anomaly, normalize_merchant_name, parse_date, service_result, transaction_id, valid_transactions
@@ -81,30 +81,27 @@ def detect_duplicates(transactions: list[Any]) -> dict[str, Any]:
         return empty_result([])
 
     candidates = [transaction for transaction in safe_transactions if transaction_is_duplicate_candidate(transaction)]
+    grouped: dict[tuple[str, float], list[tuple[Any, Any]]] = {}
+    for transaction in candidates:
+        merchant = normalize_merchant_name(get_field(transaction, "merchant", None))
+        amount = round(debit_amount(transaction), 2)
+        transaction_date = parse_date(get_field(transaction, "transaction_date", None))
+        if transaction_date is not None:
+            grouped.setdefault((merchant, amount), []).append((transaction_date, transaction))
+
     duplicates: list[dict[str, Any]] = []
-    seen_pairs: set[tuple[str | None, str | None]] = set()
-    for transaction_one, transaction_two in combinations(candidates, 2):
-        merchant_one = normalize_merchant_name(get_field(transaction_one, "merchant", None))
-        merchant_two = normalize_merchant_name(get_field(transaction_two, "merchant", None))
-        if merchant_one != merchant_two:
-            continue
-        amount_one = round(debit_amount(transaction_one), 2)
-        amount_two = round(debit_amount(transaction_two), 2)
-        if amount_one != amount_two:
-            continue
-        date_one = parse_date(get_field(transaction_one, "transaction_date", None))
-        date_two = parse_date(get_field(transaction_two, "transaction_date", None))
-        if date_one is None or date_two is None:
-            continue
-        day_gap = abs((date_one - date_two).days)
-        pair_key = tuple(sorted([transaction_id(transaction_one) or str(id(transaction_one)), transaction_id(transaction_two) or str(id(transaction_two))]))
-        if pair_key in seen_pairs:
-            continue
-        if day_gap == 0:
-            duplicates.append(build_duplicate_pair(transaction_one, transaction_two, 0.95, "Same merchant, same amount, same date"))
-            seen_pairs.add(pair_key)
-        elif day_gap <= 2:
-            duplicates.append(build_duplicate_pair(transaction_one, transaction_two, 0.75, "Same merchant and amount within 2 days"))
-            seen_pairs.add(pair_key)
+    for grouped_transactions in grouped.values():
+        grouped_transactions.sort(key=lambda item: item[0])
+        window_start = 0
+        for current_index, (current_date, current_transaction) in enumerate(grouped_transactions):
+            while current_date - grouped_transactions[window_start][0] > timedelta(days=2):
+                window_start += 1
+            for previous_index in range(window_start, current_index):
+                previous_date, previous_transaction = grouped_transactions[previous_index]
+                day_gap = (current_date - previous_date).days
+                if day_gap == 0:
+                    duplicates.append(build_duplicate_pair(previous_transaction, current_transaction, 0.95, "Same merchant, same amount, same date"))
+                else:
+                    duplicates.append(build_duplicate_pair(previous_transaction, current_transaction, 0.75, "Same merchant and amount within 2 days"))
     duplicates.sort(key=lambda item: float(item.get("confidence_score") or 0.0), reverse=True)
     return service_result(duplicates, [] if duplicates else ["No duplicate payments detected"])

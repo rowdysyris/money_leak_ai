@@ -134,16 +134,16 @@ export default function Dashboard() {
   const categories = useApiResource("/api/dashboard/category-breakdown", { initialData: [] });
   const merchants = useApiResource("/api/dashboard/top-merchants", { initialData: [] });
   const split = useApiResource("/api/dashboard/needs-wants-waste");
-  const savings = useApiResource("/api/insights/saving-priority-list", { initialData: [] });
   const survival = useApiResource("/api/insights/burn-rate");
 
-  const loading = summary.loading || categories.loading || merchants.loading || split.loading || savings.loading || survival.loading;
-  const error = summary.error || categories.error || merchants.error || split.error || savings.error || survival.error;
-  const allWarnings = [...(summary.warnings ?? []), ...(categories.warnings ?? []), ...(merchants.warnings ?? []), ...(split.warnings ?? []), ...(savings.warnings ?? []), ...(survival.warnings ?? [])];
+  const resources = [summary, categories, merchants, split, survival];
+  const loading = resources.some((resource) => resource.loading);
+  const error = resources.find((resource) => resource.error)?.error ?? "";
+  const allWarnings = resources.flatMap((resource) => resource.warnings ?? []);
   const summaryData = summary.data ?? null;
   const score = summaryData?.money_leak_score?.score ?? summaryData?.money_leak_score ?? 0;
   const chartData = buildPieData(categories.data);
-  const savingRows = safeArray(savings.data);
+  const savingRows = safeArray(summaryData?.saving_priority_list);
   const highValueRows = safeArray(summaryData?.high_value_review_transactions);
   const noStatement = !loading && summaryData === null && allWarnings.some((warning) => String(warning).includes("No statement"));
   const dailyBurn = toNumber(survival.data?.daily_burn_rate);
@@ -164,7 +164,7 @@ export default function Dashboard() {
   return (
     <AppLayout title="Dashboard" subtitle="Your spending diagnosis and saving opportunities.">
       <div className="space-y-6">
-        {error ? <ErrorBanner message={error} onRetry={summary.refetch} /> : null}
+        {error ? <ErrorBanner message={error} onRetry={() => resources.forEach((resource) => resource.refetch())} /> : null}
         <WarningBanner warnings={allWarnings} />
 
         <section className="rounded-[2rem] bg-slate-950 p-5 text-white shadow-xl sm:p-6">

@@ -3,6 +3,7 @@
 from datetime import date
 
 from services.duplicate_detector import detect_duplicates
+from services.dashboard_service import get_summary
 from services.leakage_detector import detect_small_spend_leakage
 from services.report_summary import generate_saving_priority
 from services.subscription_detector import detect_subscriptions
@@ -44,6 +45,37 @@ def test_subscriptions_not_flagged_as_duplicates():
         tx("ChatGPT OpenAI", 999, date(2026, 7, 2), category="Subscriptions"),
     ]
     assert detect_duplicates(transactions)["data"] == []
+
+
+def test_duplicate_detection_only_compares_matching_groups_within_two_days():
+    """Duplicate detection should preserve valid pairs without scanning unrelated transactions."""
+    transactions = [
+        tx("Cafe", 200, date(2026, 7, 1)),
+        tx("Cafe", 200, date(2026, 7, 1)),
+        tx("Cafe", 200, date(2026, 7, 3)),
+        tx("Cafe", 200, date(2026, 7, 6)),
+        tx("Other", 200, date(2026, 7, 1)),
+        tx("Cafe", 201, date(2026, 7, 1)),
+    ]
+
+    duplicates = detect_duplicates(transactions)["data"]
+
+    assert len(duplicates) == 3
+    assert [item["confidence_score"] for item in duplicates] == [0.95, 0.75, 0.75]
+
+
+def test_dashboard_summary_includes_saving_priority_rows():
+    """The dashboard summary should supply recommendations without a second heavy request."""
+    transactions = [
+        tx("Cafe", 200, date(2026, 7, 1)),
+        tx("Cafe", 200, date(2026, 7, 1)),
+        tx("Bank Fee", 100, date(2026, 7, 2), category="Bank Charges & Fees", need_want_waste_type="waste"),
+    ]
+
+    result = get_summary(transactions)["data"]
+
+    assert isinstance(result["saving_priority_list"], list)
+    assert result["saving_priority_list"]
 
 
 def test_large_anomaly_excluded_from_savings_projection():
